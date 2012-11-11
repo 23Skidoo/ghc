@@ -324,7 +324,10 @@ Library
         cbits/primFloat.c
         cbits/rts.c
         cbits/sysconf.c
-
+    if os(windows) {
+        c-sources:
+            cbits/iocp.c
+    }
     include-dirs: include
     includes:
         HsBase.h
@@ -349,6 +352,15 @@ Library
             GHC.IO.Encoding.CodePage.Table
             GHC.Conc.Windows
             GHC.Windows
+            GHC.Event.Windows
+        other-modules:
+            GHC.Event.IntMap
+            GHC.Event.Windows.Clock
+            GHC.Event.Windows.FFI
+            GHC.Event.Windows.Thread
+            GHC.Event.Windows.Worker
+            GHC.Event.PSQ
+            GHC.Event.Unique
     else
         exposed-modules:
             GHC.Event
