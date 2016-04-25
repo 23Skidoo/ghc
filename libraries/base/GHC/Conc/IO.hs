@@ -64,6 +64,7 @@ import qualified GHC.Conc.Windows as Windows
 import GHC.Conc.Windows (asyncRead, asyncWrite, asyncDoProc, asyncReadBA,
                          asyncWriteBA, ConsoleEvent(..), win32ConsoleHandler,
                          toWin32ConsoleEvent)
+import qualified GHC.Event.Windows.Thread as Event
 #else
 import qualified GHC.Event.Thread as Event
 #endif
@@ -72,7 +73,9 @@ ensureIOManagerIsRunning :: IO ()
 #ifndef mingw32_HOST_OS
 ensureIOManagerIsRunning = Event.ensureIOManagerIsRunning
 #else
-ensureIOManagerIsRunning = Windows.ensureIOManagerIsRunning
+ensureIOManagerIsRunning = do
+  Event.ensureIOManagerIsRunning
+  Windows.ensureIOManagerIsRunning
 #endif
 
 ioManagerCapabilitiesChanged :: IO ()
@@ -119,7 +122,7 @@ threadWaitWrite fd
 -- is an IO action that can be used to deregister interest
 -- in the file descriptor.
 threadWaitReadSTM :: Fd -> IO (Sync.STM (), IO ())
-threadWaitReadSTM fd 
+threadWaitReadSTM fd
 #ifndef mingw32_HOST_OS
   | threaded  = Event.threadWaitReadSTM fd
 #endif
@@ -138,7 +141,7 @@ threadWaitReadSTM fd
 -- is an IO action that can be used to deregister interest
 -- in the file descriptor.
 threadWaitWriteSTM :: Fd -> IO (Sync.STM (), IO ())
-threadWaitWriteSTM fd 
+threadWaitWriteSTM fd
 #ifndef mingw32_HOST_OS
   | threaded  = Event.threadWaitWriteSTM fd
 #endif
@@ -178,11 +181,7 @@ closeFdWith close fd
 --
 threadDelay :: Int -> IO ()
 threadDelay time
-#ifdef mingw32_HOST_OS
-  | threaded  = Windows.threadDelay time
-#else
   | threaded  = Event.threadDelay time
-#endif
   | otherwise = IO $ \s ->
         case time of { I# time# ->
         case delay# time# s of { s' -> (# s', () #)
@@ -193,11 +192,7 @@ threadDelay time
 --
 registerDelay :: Int -> IO (TVar Bool)
 registerDelay usecs
-#ifdef mingw32_HOST_OS
-  | threaded = Windows.registerDelay usecs
-#else
   | threaded = Event.registerDelay usecs
-#endif
   | otherwise = errorWithoutStackTrace "registerDelay: requires -threaded"
 
 foreign import ccall unsafe "rtsSupportsBoundThreads" threaded :: Bool
