@@ -39,6 +39,8 @@ module GHC.Conc.Sync
         , forkIOWithUnmask
         , forkOn
         , forkOnWithUnmask
+        , rtsSupportsBoundThreads
+        , forkOSMasked
         , numCapabilities
         , getNumCapabilities
         , setNumCapabilities
@@ -334,6 +336,38 @@ forkOn (I# cpu) action = IO $ \ s ->
 -- @since 4.4.0.0
 forkOnWithUnmask :: Int -> ((forall a . IO a -> IO a) -> IO ()) -> IO ThreadId
 forkOnWithUnmask cpu io = forkOn cpu (io unsafeUnmask)
+
+-- | 'True' if bound threads are supported.
+-- If @rtsSupportsBoundThreads@ is 'False', 'isCurrentThreadBound'
+-- will always return 'False' and both 'forkOS' and 'runInBoundThread' will
+-- fail.
+foreign import ccall unsafe rtsSupportsBoundThreads :: Bool
+
+-- | Like 'Control.Concurrent.forkOS', but start the thread in
+-- 'Control.Exception.MaskedInterruptible', rather than inheriting the masking
+-- state from the caller.
+forkOSMasked :: IO () -> IO ThreadId
+
+foreign import ccall forkOS_createThread
+    :: StablePtr (IO ()) -> IO CInt
+
+failNonThreaded :: IO a
+failNonThreaded = fail $ "RTS doesn't support multiple OS threads "
+                       ++"(use ghc -threaded when linking)"
+
+forkOSMasked action
+    | rtsSupportsBoundThreads = do
+        mv <- newEmptyMVar
+        let action_plus = catchException action childHandler
+        entry <- newStablePtr (myThreadId >>= putMVar mv >> action_plus)
+        err <- forkOS_createThread entry
+            -- forkOS_createThread creates a thread with exceptions
+            -- masked by default.
+        when (err /= 0) $ fail "Cannot create OS thread."
+        tid <- takeMVar mv
+        freeStablePtr entry
+        return tid
+    | otherwise = failNonThreaded
 
 -- | the value passed to the @+RTS -N@ flag.  This is the number of
 -- Haskell threads that can run truly simultaneously at any given

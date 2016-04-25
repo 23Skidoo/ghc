@@ -249,13 +249,6 @@ waiting for the results in the main thread.
 
 -}
 
--- | 'True' if bound threads are supported.
--- If @rtsSupportsBoundThreads@ is 'False', 'isCurrentThreadBound'
--- will always return 'False' and both 'forkOS' and 'runInBoundThread' will
--- fail.
-foreign import ccall rtsSupportsBoundThreads :: Bool
-
-
 {- |
 Like 'forkIO', this sparks off a new thread to run the 'IO'
 computation passed as the first argument, and returns the 'ThreadId'
@@ -288,35 +281,19 @@ forkOS_entry stableAction = do
         action <- deRefStablePtr stableAction
         action
 
-foreign import ccall forkOS_createThread
-    :: StablePtr (IO ()) -> IO CInt
-
 failNonThreaded :: IO a
 failNonThreaded = fail $ "RTS doesn't support multiple OS threads "
                        ++"(use ghc -threaded when linking)"
 
-forkOS action0
-    | rtsSupportsBoundThreads = do
-        mv <- newEmptyMVar
-        b <- Exception.getMaskingState
-        let
-            -- async exceptions are masked in the child if they are masked
-            -- in the parent, as for forkIO (see #1048). forkOS_createThread
-            -- creates a thread with exceptions masked by default.
-            action1 = case b of
-                        Unmasked -> unsafeUnmask action0
-                        MaskedInterruptible -> action0
-                        MaskedUninterruptible -> uninterruptibleMask_ action0
-
-            action_plus = catchException action1 childHandler
-
-        entry <- newStablePtr (myThreadId >>= putMVar mv >> action_plus)
-        err <- forkOS_createThread entry
-        when (err /= 0) $ fail "Cannot create OS thread."
-        tid <- takeMVar mv
-        freeStablePtr entry
-        return tid
-    | otherwise = failNonThreaded
+forkOS action = do
+    b <- Exception.getMaskingState
+    forkOSMasked $
+        -- async exceptions are masked in the child if they are masked
+        -- in the parent, as for forkIO (see #1048).
+        case b of
+            Unmasked -> unsafeUnmask action
+            MaskedInterruptible -> action
+            MaskedUninterruptible -> uninterruptibleMask_ action
 
 -- | Like 'forkIOWithUnmask', but the child thread is a bound thread,
 -- as with 'forkOS'.
