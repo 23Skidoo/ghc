@@ -298,6 +298,6 @@
    associated with each Capability.
    -------------------------------------------------------------------------- */
 
-#define MAX_SPARE_WORKERS 6
+#define MAX_SPARE_WORKERS 500
 
 #endif /* RTS_CONSTANTS_H */
